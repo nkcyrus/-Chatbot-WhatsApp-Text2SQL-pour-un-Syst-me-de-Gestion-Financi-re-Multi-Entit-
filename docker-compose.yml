@@ -1,0 +1,37 @@
+services:
+  db:
+    image: postgres:16
+    container_name: orionis_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: orionis
+      POSTGRES_DB: orionis_db
+    volumes:
+      - ./sql/01_schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
+      - ./sql/02_data.sql:/docker-entrypoint-initdb.d/02_data.sql
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d orionis_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    container_name: orionis_app
+    restart: always
+    ports:
+      - "5000:5000"
+    env_file:
+      - .env
+    environment:
+      DB_HOST: db
+    volumes:
+      - ./exports:/app/exports
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

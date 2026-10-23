@@ -1,0 +1,90 @@
+{
+    "table_name": "debit",
+    "description": "Enregistre les paiements effectués par Orionis à ses fournisseurs, suite à la réception d'une facture fournisseur (facture_reçue). C'est le flux bancaire sortant associé à une dépense.",
+    "columns": [
+        {
+            "name": "id_transaction",
+            "type": "SERIAL",
+            "description": "Clé primaire unique de la transaction"
+        },
+        {
+            "name": "montant",
+            "type": "DECIMAL(15,2)",
+            "description": "Montant payé. Doit correspondre au montant de la facture_reçue associée."
+        },
+        {
+            "name": "reference",
+            "type": "VARCHAR(50)",
+            "description": "Référence du virement émis (ex: 'Virement SEPA', 'Paiement fournisseur')"
+        },
+        {
+            "name": "date",
+            "type": "DATE",
+            "description": "Date d'exécution du paiement"
+        },
+        {
+            "name": "no_compte",
+            "type": "VARCHAR(34)",
+            "description": "IBAN ou référence externe du compte fournisseur (informatif)"
+        },
+        {
+            "name": "no_compte_debit",
+            "type": "INTEGER",
+            "description": "Lien vers le compte bancaire Orionis débité.",
+            "references": {
+                "table": "compte_bancaire",
+                "column": "no_compte"
+            },
+            "constraints": ["NOT NULL"]
+        },
+        {
+            "name": "id_facture",
+            "type": "INTEGER",
+            "description": "Lien vers la facture reçue réglée par ce débit.",
+            "references": {
+                "table": "facture_recue",
+                "column": "id_facture"
+            },
+            "constraints": ["NOT NULL"]
+        }
+    ],
+    "synonyms": ["paiement effectué", "virement sortant", "règlement fournisseur", "transaction sortante", "décaissement"],
+    "flow_context": {
+        "description": "Un débit est la dernière étape du flux dépense : depense → facture_reçue → debit → solde compte_bancaire mis à jour.",
+        "note": "Le montant dans debit doit être identique à celui dans depense et facture_reçue."
+    },
+    "business_rules": [
+        "Le montant du débit doit correspondre au montant de la facture reçue associée.",
+        "Un débit n'est possible que si le solde du compte est >= au montant du débit.",
+        "Le solde du compte expéditeur est automatiquement décrémenté via trigger.",
+        "Un débit est toujours lié à une facture_reçue, jamais à une facture_emise."
+    ],
+    "common_mistakes": [
+        "Ne pas confondre debit (paiement fournisseur, lié à facture_reçue) et transaction_interne (virement interne sans facture).",
+        "Toujours vérifier le solde avant insertion : SELECT solde FROM compte_bancaire WHERE no_compte = X.",
+        "Ne pas mettre à jour le solde manuellement — trigger automatique.",
+        "id_facture ici référence facture_reçue, pas facture_emise."
+    ],
+    "sample_queries": [
+        {
+            "question": "Quel compte a été utilisé pour payer la facture n°101 ?",
+            "sql": "SELECT d.no_compte_debit, cb.intitule FROM debit d JOIN compte_bancaire cb ON d.no_compte_debit = cb.no_compte WHERE d.id_facture = 101;"
+        },
+        {
+            "question": "Enregistre le paiement de 150€ pour la facture 101 depuis le compte n°55.",
+            "sql": "INSERT INTO debit (montant, date, no_compte_debit, id_facture, reference) VALUES (150, CURRENT_DATE, 55, 101, 'Virement SEPA');"
+        },
+        {
+            "question": "Quelles factures reçues n'ont pas encore été payées ?",
+            "sql": "SELECT fr.id_facture, fr.montant, fr.date FROM facture_reçue fr WHERE NOT EXISTS (SELECT 1 FROM debit d WHERE d.id_facture = fr.id_facture) ORDER BY fr.date;"
+        },
+        {
+            "question": "Quel est le total des paiements fournisseurs effectués ce mois-ci ?",
+            "sql": "SELECT SUM(montant) AS total_paye FROM debit WHERE date >= date_trunc('month', CURRENT_DATE);"
+        },
+        {
+            "question": "Quels sont les 5 paiements fournisseurs les plus élevés de l'année ?",
+            "sql": "SELECT d.id_transaction, d.montant, d.date, d.reference, cb.intitule AS compte FROM debit d JOIN compte_bancaire cb ON d.no_compte_debit = cb.no_compte WHERE EXTRACT(YEAR FROM d.date) = EXTRACT(YEAR FROM CURRENT_DATE) ORDER BY d.montant DESC LIMIT 5;"
+        }
+    ]
+}

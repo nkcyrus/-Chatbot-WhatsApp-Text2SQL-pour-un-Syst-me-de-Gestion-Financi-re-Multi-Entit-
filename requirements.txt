@@ -1,0 +1,19 @@
+# Serveur web
+flask>=3.1.0
+
+# Base de données PostgreSQL
+psycopg2-binary>=2.9.9
+
+# Google Gemini
+google-genai>=1.0.0
+
+# Twilio WhatsApp
+twilio>=9.0.0
+
+openpyxl
+
+# Variables d'environnement
+python-dotenv>=1.0.1
+
+# Validation AST du SQL généré
+sqlglot>=23.0.0

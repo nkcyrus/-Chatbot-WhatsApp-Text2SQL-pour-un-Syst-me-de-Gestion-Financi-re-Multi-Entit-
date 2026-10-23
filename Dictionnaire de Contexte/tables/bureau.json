@@ -1,0 +1,62 @@
+{
+    "table_name": "bureau",
+    "description": "Contient les bureaux physiques du groupe Orionis. Chaque bureau est rattaché à une entité juridique et peut générer des dépenses opérationnelles.",
+    "columns": [
+        {
+            "name": "id_bureau",
+            "type": "SERIAL",
+            "description": "Clé primaire unique du bureau"
+        },
+        {
+            "name": "nom",
+            "type": "VARCHAR(100)",
+            "description": "Nom du bureau (généralement la ville ou le site, ex: 'Paris', 'Abidjan HQ')"
+        },
+        {
+            "name": "adresse",
+            "type": "VARCHAR(255)",
+            "description": "Adresse postale complète du bureau"
+        },
+        {
+            "name": "id_entite",
+            "type": "INTEGER",
+            "description": "Lien vers la table entite_juridique.",
+            "references": {
+                "table": "entite_juridique",
+                "column": "id_entite"
+            },
+            "constraints": ["NOT NULL"]
+        }
+    ],
+    "synonyms": ["locaux", "ville", "site", "siège", "agence", "centre", "antenne", "établissement"],
+    "business_rules": [
+        "Un bureau est associé à une seule entité juridique.",
+        "Un bureau peut générer plusieurs dépenses de catégorie 'bureau'."
+    ],
+    "common_mistakes": [
+        "Pour insérer un bureau, récupérer l'id_entite via une sous-requête sur entite_juridique si le pays ou le nom est fourni.",
+        "Ne pas confondre bureau (site physique interne) et client (entité externe)."
+    ],
+    "sample_queries": [
+        {
+            "question": "Insère un nouveau bureau à Paris rattaché à l'entité France.",
+            "sql": "INSERT INTO bureau (nom, adresse, id_entite) VALUES ('Paris', '19 Rue de la Paix, 75001 Paris', (SELECT id_entite FROM entite_juridique WHERE pays = 'France' LIMIT 1));"
+        },
+        {
+            "question": "Quels sont tous les bureaux rattachés à l'entité n°2 ?",
+            "sql": "SELECT nom, adresse FROM bureau WHERE id_entite = 2;"
+        },
+        {
+            "question": "Mets à jour l'adresse du bureau de Lyon.",
+            "sql": "UPDATE bureau SET adresse = 'Nouvelle adresse Lyon' WHERE nom = 'Lyon';"
+        },
+        {
+            "question": "Supprime le bureau d'Abidjan.",
+            "sql": "DELETE FROM bureau WHERE nom = 'Abidjan';"
+        },
+        {
+            "question": "Quelles sont les dépenses du bureau de Paris ce trimestre ?",
+            "sql": "SELECT d.libelle, d.montant, d.devise, d.date FROM depense d JOIN bureau b ON d.id_bureau = b.id_bureau WHERE b.nom = 'Paris' AND d.date >= date_trunc('quarter', CURRENT_DATE) ORDER BY d.date DESC;"
+        }
+    ]
+}

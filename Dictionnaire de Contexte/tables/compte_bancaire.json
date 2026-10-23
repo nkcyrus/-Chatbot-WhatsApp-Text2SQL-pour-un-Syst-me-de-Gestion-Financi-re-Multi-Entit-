@@ -1,0 +1,79 @@
+{
+    "table_name": "compte_bancaire",
+    "description": "Contient les comptes bancaires du groupe Orionis. Chaque compte est rattaché à une entité juridique et sert de source ou destination pour les débits, crédits et transactions internes.",
+    "columns": [
+        {
+            "name": "no_compte",
+            "type": "SERIAL",
+            "description": "Clé primaire unique du compte (identifiant interne, pas un IBAN)"
+        },
+        {
+            "name": "intitule",
+            "type": "VARCHAR(100)",
+            "description": "Nom descriptif du compte (ex: 'Compte Courant EUR France', 'Compte USD Côte d'Ivoire')"
+        },
+        {
+            "name": "solde",
+            "type": "DECIMAL(15,2)",
+            "description": "Solde actuel du compte dans sa devise. Mis à jour à chaque débit, crédit ou transaction interne."
+        },
+        {
+            "name": "devise",
+            "type": "VARCHAR(3)",
+            "description": "Devise du compte (ex: 'EUR', 'USD', 'XOF'). Un compte ne peut opérer que dans sa devise."
+        },
+        {
+            "name": "id_entite",
+            "type": "INTEGER",
+            "description": "Lien vers la table entite_juridique. Entité propriétaire du compte.",
+            "references": {
+                "table": "entite_juridique",
+                "column": "id_entite"
+            },
+            "constraints": ["NOT NULL"]
+        }
+    ],
+    "synonyms": ["compte", "caisse", "disponibilité", "trésorerie", "compte courant", "wallet"],
+    "business_rules": [
+        "Un compte bancaire est associé à une seule entité juridique.",
+        "Le solde ne peut pas descendre en dessous de 0 (vérification avant tout débit ou transaction sortante).",
+        "Un débit ou une transaction interne sortante n'est possible que si solde >= montant de l'opération.",
+        "Le solde est mis à jour automatiquement via trigger à chaque INSERT dans debit, credit ou transaction_interne."
+    ],
+    "common_mistakes": [
+        "Toujours vérifier le solde disponible avant d'insérer un débit ou une transaction interne.",
+        "Ne pas mettre à jour le solde manuellement via UPDATE : c'est géré automatiquement par les triggers.",
+        "Pour trouver un compte par devise, filtrer sur la colonne 'devise' et non sur l'intitulé.",
+        "no_compte est un identifiant interne — ne pas le confondre avec un numéro IBAN."
+    ],
+    "sample_queries": [
+        {
+            "question": "Quel est le solde du compte bancaire n°10 ?",
+            "sql": "SELECT intitule, solde, devise FROM compte_bancaire WHERE no_compte = 10;"
+        },
+        {
+            "question": "Liste tous les comptes bancaires de l'entité n°5.",
+            "sql": "SELECT no_compte, intitule, solde, devise FROM compte_bancaire WHERE id_entite = 5;"
+        },
+        {
+            "question": "Quelle est la trésorerie totale du groupe par devise ?",
+            "sql": "SELECT devise, SUM(solde) AS tresorerie_totale FROM compte_bancaire GROUP BY devise ORDER BY tresorerie_totale DESC;"
+        },
+        {
+            "question": "Quels comptes ont un solde insuffisant (moins de 1000€) ?",
+            "sql": "SELECT no_compte, intitule, solde, devise FROM compte_bancaire WHERE solde < 1000 ORDER BY solde ASC;"
+        },
+        {
+            "question": "Quel compte EUR de la France a le solde le plus élevé ?",
+            "sql": "SELECT cb.no_compte, cb.intitule, cb.solde FROM compte_bancaire cb JOIN entite_juridique e ON cb.id_entite = e.id_entite WHERE cb.devise = 'EUR' AND e.pays = 'France' ORDER BY cb.solde DESC LIMIT 1;"
+        },
+        {
+            "question": "Renomme le compte n°2 en 'Compte Épargne Orionis'.",
+            "sql": "UPDATE compte_bancaire SET intitule = 'Compte Épargne Orionis' WHERE no_compte = 2;"
+        },
+        {
+            "question": "Transfère le compte n°3 à l'entité juridique n°2.",
+            "sql": "UPDATE compte_bancaire SET id_entite = 2 WHERE no_compte = 3;"
+        }
+    ]
+}

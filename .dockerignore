@@ -1,0 +1,36 @@
+# Environnement Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+
+# Exports CSV temporaires
+exports/
+
+# Git
+.git/
+.gitignore
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Données et logs
+*.log
+*.sqlite
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+#Fichiers
+*.pdf
+*.md
+test_bot.py
+*.svg

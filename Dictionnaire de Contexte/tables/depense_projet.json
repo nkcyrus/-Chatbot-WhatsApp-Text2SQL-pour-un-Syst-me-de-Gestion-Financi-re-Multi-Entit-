@@ -1,0 +1,70 @@
+{
+    "table_name": "depense_projet",
+    "description": "Table de liaison analytique entre dépenses et projets. Permet de ventiler une dépense sur un ou plusieurs projets selon un pourcentage. Essentielle pour le suivi budgétaire par projet.",
+    "columns": [
+        {
+            "name": "id_depense_projet",
+            "type": "SERIAL",
+            "description": "Clé primaire unique"
+        },
+        {
+            "name": "id_depense",
+            "type": "INTEGER",
+            "description": "Lien vers la dépense ventilée.",
+            "references": {
+                "table": "depense",
+                "column": "id_depense"
+            },
+            "constraints": ["NOT NULL"]
+        },
+        {
+            "name": "id_projet",
+            "type": "INTEGER",
+            "description": "Lien vers le projet concerné.",
+            "references": {
+                "table": "projet",
+                "column": "id_projet"
+            },
+            "constraints": ["NOT NULL"]
+        },
+        {
+            "name": "pourcentage",
+            "type": "INTEGER",
+            "description": "Part de la dépense affectée à ce projet, entre 1 et 100. La somme pour une même dépense doit toujours être 100."
+        }
+    ],
+    "synonyms": ["nécessite", "concerne", "répartition", "ventilation", "affectation"],
+    "business_rules": [
+        "Une dépense peut être liée à plusieurs projets.",
+        "Pour une dépense multi-projets, la somme des pourcentages doit être égale à 100.",
+        "Une mise à jour partielle des pourcentages est interdite : toujours supprimer et réinsérer toutes les lignes pour une dépense.",
+        "Pour modifier la répartition d'une dépense, utiliser une transaction BEGIN/DELETE/INSERT/COMMIT."
+    ],
+    "common_mistakes": [
+        "Ne jamais faire UPDATE sur pourcentage seul — toujours DELETE + INSERT pour garantir la cohérence à 100%.",
+        "Pour calculer le montant imputé à un projet : SUM(depense.montant * pourcentage / 100.0) — ne pas oublier le 100.0 (division flottante).",
+        "Une dépense à 100% sur un seul projet reste obligatoire dans cette table — ne pas omettre l'insertion."
+    ],
+    "sample_queries": [
+        {
+            "question": "Affecte la dépense n°10 à 100% au projet 'Alpha'.",
+            "sql": "INSERT INTO depense_projet (id_depense, id_projet, pourcentage) VALUES (10, (SELECT id_projet FROM projet WHERE nom = 'Alpha'), 100);"
+        },
+        {
+            "question": "Pour la dépense n°15, affecte 30% au projet X et 70% au projet Y.",
+            "sql": "INSERT INTO depense_projet (id_depense, id_projet, pourcentage) VALUES (15, (SELECT id_projet FROM projet WHERE nom = 'X'), 30), (15, (SELECT id_projet FROM projet WHERE nom = 'Y'), 70);"
+        },
+        {
+            "question": "Modifie la répartition de la dépense n°10 : mets 60% sur Alpha et 40% sur Beta.",
+            "sql": "BEGIN; DELETE FROM depense_projet WHERE id_depense = 10; INSERT INTO depense_projet (id_depense, id_projet, pourcentage) VALUES (10, (SELECT id_projet FROM projet WHERE nom = 'Alpha'), 60), (10, (SELECT id_projet FROM projet WHERE nom = 'Beta'), 40); COMMIT;"
+        },
+        {
+            "question": "Affiche toutes les ventilations de la dépense n°20.",
+            "sql": "SELECT dp.pourcentage, p.nom AS projet, d.montant * dp.pourcentage / 100.0 AS montant_impute FROM depense_projet dp JOIN projet p ON dp.id_projet = p.id_projet JOIN depense d ON dp.id_depense = d.id_depense WHERE dp.id_depense = 20;"
+        },
+        {
+            "question": "Quels projets sont concernés par la dépense 'Achat Serveur' ?",
+            "sql": "SELECT p.nom, dp.pourcentage FROM depense_projet dp JOIN projet p ON dp.id_projet = p.id_projet JOIN depense d ON dp.id_depense = d.id_depense WHERE d.libelle ILIKE '%Achat Serveur%';"
+        }
+    ]
+}

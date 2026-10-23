@@ -1,0 +1,72 @@
+{
+    "table_name": "facture_emise",
+    "description": "Contient les factures émises par Orionis à ses clients. Une facture émise représente une créance client : Orionis a livré une prestation et attend un paiement (enregistré dans credit).",
+    "columns": [
+        {
+            "name": "id_facture",
+            "type": "SERIAL",
+            "description": "Clé primaire unique de la facture. Attention : id_facture est unique dans l'union facture_emise ∪ facture_reçue."
+        },
+        {
+            "name": "date",
+            "type": "DATE",
+            "description": "Date d'émission de la facture"
+        },
+        {
+            "name": "montant",
+            "type": "DECIMAL(15,2)",
+            "description": "Montant total de la facture. Doit correspondre au montant du crédit associé."
+        },
+        {
+            "name": "id_client",
+            "type": "INTEGER",
+            "description": "Client à qui la facture est adressée.",
+            "references": {
+                "table": "client",
+                "column": "id_client"
+            },
+            "constraints": ["NOT NULL"]
+        }
+    ],
+    "synonyms": ["facture client", "preuve de vente", "justificatif de vente", "honoraire", "créance client"],
+    "flow_context": {
+        "description": "Flux de facturation client : projet terminé → facture_emise → credit (paiement reçu) → solde compte_bancaire mis à jour."
+    },
+    "business_rules": [
+        "id_facture est unique dans l'union facture_emise et facture_reçue.",
+        "Le montant de la facture émise doit être égal au montant du crédit associé.",
+        "Une facture émise est réglée par un unique client.",
+        "Une facture non présente dans credit est considérée comme impayée."
+    ],
+    "common_mistakes": [
+        "Ne pas confondre facture_emise (revenus clients) et facture_reçue (dépenses fournisseurs).",
+        "Pour vérifier si une facture est payée : vérifier l'existence d'un enregistrement dans credit WHERE id_facture = X.",
+        "id_facture est partagé entre facture_emise et facture_reçue : ne jamais joindre les deux sans filtrer par table source."
+    ],
+    "sample_queries": [
+        {
+            "question": "Quel est le montant total facturé aux clients ce mois-ci ?",
+            "sql": "SELECT SUM(montant) AS total_facture FROM facture_emise WHERE date >= date_trunc('month', CURRENT_DATE);"
+        },
+        {
+            "question": "Enregistre une nouvelle facture de 1500€ émise aujourd'hui pour le client n°5.",
+            "sql": "INSERT INTO facture_emise (date, montant, id_client) VALUES (CURRENT_DATE, 1500, 5);"
+        },
+        {
+            "question": "Quelles factures clients sont encore impayées ?",
+            "sql": "SELECT f.id_facture, f.montant, f.date, c.nom AS client FROM facture_emise f JOIN client c ON f.id_client = c.id_client WHERE NOT EXISTS (SELECT 1 FROM credit cr WHERE cr.id_facture = f.id_facture) ORDER BY f.date;"
+        },
+        {
+            "question": "Quel est le chiffre d'affaires total par client en 2025 ?",
+            "sql": "SELECT c.nom, c.prenom, SUM(f.montant) AS ca_total FROM facture_emise f JOIN client c ON f.id_client = c.id_client WHERE EXTRACT(YEAR FROM f.date) = 2025 GROUP BY c.id_client, c.nom, c.prenom ORDER BY ca_total DESC;"
+        },
+        {
+            "question": "Change le montant de la facture client n°50 à 2500€.",
+            "sql": "UPDATE facture_emise SET montant = 2500 WHERE id_facture = 50;"
+        },
+        {
+            "question": "Supprime la facture client n°12 (annulation de commande).",
+            "sql": "DELETE FROM facture_emise WHERE id_facture = 12;"
+        }
+    ]
+}

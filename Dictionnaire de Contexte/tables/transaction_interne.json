@@ -1,0 +1,82 @@
+{
+    "table_name": "transaction_interne",
+    "description": "Contient les virements entre comptes bancaires internes du groupe Orionis. Permet les transferts de trésorerie entre entités ou bureaux sans passer par une facture.",
+    "columns": [
+        {
+            "name": "id_transaction",
+            "type": "SERIAL",
+            "description": "Clé primaire unique de la transaction"
+        },
+        {
+            "name": "montant",
+            "type": "DECIMAL(15,2)",
+            "description": "Montant transféré. Doit être strictement supérieur à 0."
+        },
+        {
+            "name": "reference",
+            "type": "VARCHAR(50)",
+            "description": "Référence libre identifiant la transaction (ex: 'Trésorerie Mars', 'Rééquilibrage Q1')"
+        },
+        {
+            "name": "date",
+            "type": "DATE",
+            "description": "Date d'exécution de la transaction"
+        },
+        {
+            "name": "no_compte_recepteur",
+            "type": "INTEGER",
+            "description": "Compte bancaire qui reçoit les fonds.",
+            "references": {
+                "table": "compte_bancaire",
+                "column": "no_compte"
+            },
+            "constraints": ["NOT NULL"]
+        },
+        {
+            "name": "no_compte_expediteur",
+            "type": "INTEGER",
+            "description": "Compte bancaire qui envoie les fonds. Son solde doit être >= montant.",
+            "references": {
+                "table": "compte_bancaire",
+                "column": "no_compte"
+            },
+            "constraints": ["NOT NULL"]
+        }
+    ],
+    "synonyms": ["virement interne", "transfert de fonds", "mouvement de trésorerie", "rechargement de compte", "rééquilibrage"],
+    "business_rules": [
+        "Le compte expéditeur et le compte récepteur doivent tous deux exister dans compte_bancaire.",
+        "Le montant doit être strictement supérieur à 0.",
+        "Le solde du compte expéditeur doit être >= montant avant la transaction.",
+        "Une transaction interne n'est jamais liée à une facture émise ou reçue.",
+        "Les soldes des deux comptes sont mis à jour automatiquement via trigger."
+    ],
+    "common_mistakes": [
+        "Ne pas insérer une transaction_interne si le solde de l'expéditeur est insuffisant — vérifier d'abord avec SELECT solde FROM compte_bancaire WHERE no_compte = X.",
+        "no_compte_expediteur ≠ no_compte_recepteur : un virement vers soi-même est interdit.",
+        "Ne pas mettre à jour les soldes manuellement après un INSERT — c'est géré par trigger.",
+        "Une transaction interne ne génère ni débit ni crédit au sens des tables debit/credit — ces tables sont réservées aux flux avec factures."
+    ],
+    "sample_queries": [
+        {
+            "question": "Quel est le montant total des transferts envoyés du compte n°10 vers le compte n°20 ?",
+            "sql": "SELECT SUM(montant) AS total_transferts FROM transaction_interne WHERE no_compte_expediteur = 10 AND no_compte_recepteur = 20;"
+        },
+        {
+            "question": "Transfère 1000€ du compte 5 vers le compte 8 aujourd'hui avec la référence 'Trésorerie Mars'.",
+            "sql": "INSERT INTO transaction_interne (montant, date, no_compte_expediteur, no_compte_recepteur, reference) VALUES (1000, CURRENT_DATE, 5, 8, 'Trésorerie Mars');"
+        },
+        {
+            "question": "Quels transferts internes ont été réalisés ce mois-ci ?",
+            "sql": "SELECT ti.id_transaction, ti.montant, ti.reference, ti.date, cb_exp.intitule AS expediteur, cb_rec.intitule AS recepteur FROM transaction_interne ti JOIN compte_bancaire cb_exp ON ti.no_compte_expediteur = cb_exp.no_compte JOIN compte_bancaire cb_rec ON ti.no_compte_recepteur = cb_rec.no_compte WHERE ti.date >= date_trunc('month', CURRENT_DATE) ORDER BY ti.date DESC;"
+        },
+        {
+            "question": "Modifie la référence de la transaction n°45 en 'Régularisation Mars'.",
+            "sql": "UPDATE transaction_interne SET reference = 'Régularisation Mars' WHERE id_transaction = 45;"
+        },
+        {
+            "question": "Quel est le volume total des mouvements de trésorerie par mois en 2025 ?",
+            "sql": "SELECT date_trunc('month', date) AS mois, SUM(montant) AS volume_total, COUNT(*) AS nb_transactions FROM transaction_interne WHERE EXTRACT(YEAR FROM date) = 2025 GROUP BY mois ORDER BY mois;"
+        }
+    ]
+}

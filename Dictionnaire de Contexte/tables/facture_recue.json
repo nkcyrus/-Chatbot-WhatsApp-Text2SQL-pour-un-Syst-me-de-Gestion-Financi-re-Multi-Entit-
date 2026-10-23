@@ -1,0 +1,70 @@
+{
+    "table_name": "facture_reçue",
+    "description": "Contient les factures reçues de fournisseurs, justifiant chaque dépense. C'est facture_reçue qui porte la relation vers depense via id_depense. Une facture reçue est toujours liée à une dépense et payée via un débit.",
+    "columns": [
+        {
+            "name": "id_facture",
+            "type": "SERIAL",
+            "description": "Clé primaire unique de la facture. Attention : id_facture est unique dans l'union facture_emise ∪ facture_reçue."
+        },
+        {
+            "name": "montant",
+            "type": "DECIMAL(15,2)",
+            "description": "Montant de la facture fournisseur. Doit être identique au montant dans depense et debit."
+        },
+        {
+            "name": "date",
+            "type": "DATE",
+            "description": "Date de réception de la facture fournisseur."
+        },
+        {
+            "name": "id_depense",
+            "type": "INTEGER",
+            "description": "Lien vers la dépense associée. Relation 1-to-1. C'est cette colonne qui porte la relation entre facture_reçue et depense.",
+            "references": {
+                "table": "depense",
+                "column": "id_depense"
+            },
+            "constraints": ["NOT NULL", "UNIQUE"]
+        }
+    ],
+    "synonyms": ["justificatif fournisseur", "facture fournisseur", "preuve d'achat", "pièce comptable"],
+    "flow_context": {
+        "description": "La facture_reçue est insérée juste après la dépense dans le même CTE : INSERT depense → INSERT facture_reçue (avec id_depense) → INSERT depense_projet → INSERT debit.",
+        "note": "C'est facture_reçue.id_depense qui porte la relation, pas l'inverse. depense n'a pas de colonne id_facture."
+    },
+    "business_rules": [
+        "id_facture est unique dans l'union facture_emise et facture_reçue.",
+        "Une facture reçue est rattachée à une unique dépense (relation 1-to-1 portée par id_depense UNIQUE).",
+        "Le montant doit être identique dans facture_reçue, depense et debit.",
+        "Pour joindre facture_reçue à depense : JOIN facture_reçue fr ON fr.id_depense = d.id_depense."
+    ],
+    "common_mistakes": [
+        "Ne pas confondre facture_reçue (dépenses fournisseurs) et facture_emise (revenus clients).",
+        "Ne jamais insérer dans facture_reçue séparément : toujours dans le même CTE que depense.",
+        "Pour vérifier si une facture reçue est payée : vérifier l'existence d'un enregistrement dans debit WHERE id_facture = X.",
+        "La jointure correcte est : JOIN facture_reçue fr ON fr.id_depense = d.id_depense — ne pas chercher d.id_facture qui n'existe pas."
+    ],
+    "sample_queries": [
+        {
+            "question": "Liste toutes les factures reçues en mars 2026.",
+            "sql": "SELECT fr.id_facture, fr.montant, fr.date, d.libelle FROM facture_reçue fr JOIN depense d ON fr.id_depense = d.id_depense WHERE fr.date >= '2026-03-01' AND fr.date <= '2026-03-31';"
+        },
+        {
+            "question": "Trouve la facture liée à la dépense 'Achat Serveur'.",
+            "sql": "SELECT fr.* FROM facture_reçue fr JOIN depense d ON fr.id_depense = d.id_depense WHERE d.libelle ILIKE '%Achat Serveur%';"
+        },
+        {
+            "question": "Quelles factures reçues n'ont pas encore été payées (sans débit associé) ?",
+            "sql": "SELECT fr.id_facture, fr.montant, fr.date, d.libelle FROM facture_reçue fr JOIN depense d ON fr.id_depense = d.id_depense WHERE NOT EXISTS (SELECT 1 FROM debit db WHERE db.id_facture = fr.id_facture) ORDER BY fr.date;"
+        },
+        {
+            "question": "Combien de factures ont un montant supérieur à 1000€ ?",
+            "sql": "SELECT COUNT(*) AS nb FROM facture_reçue WHERE montant > 1000;"
+        },
+        {
+            "question": "Change la date de la facture liée à la dépense 'Achat Serveur' au 15 mars 2026.",
+            "sql": "UPDATE facture_reçue SET date = '2026-03-15' WHERE id_depense = (SELECT id_depense FROM depense WHERE libelle ILIKE '%Achat Serveur%');"
+        }
+    ]
+}

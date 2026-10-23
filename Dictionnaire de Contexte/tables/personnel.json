@@ -1,0 +1,99 @@
+{
+    "table_name": "personnel",
+    "description": "Contient les informations liées aux employés internes du groupe Orionis. Chaque membre du personnel est rattaché à une entité juridique et possède un rôle définissant ses droits d'accès.",
+    "columns": [
+        {
+            "name": "no_matricule",
+            "type": "SERIAL",
+            "description": "Clé primaire unique d'une personne"
+        },
+        {
+            "name": "nom",
+            "type": "VARCHAR(50)",
+            "description": "Nom de la personne"
+        },
+        {
+            "name": "prenom",
+            "type": "VARCHAR(50)",
+            "description": "Prénom de la personne"
+        },
+        {
+            "name": "email",
+            "type": "VARCHAR(100)",
+            "description": "Adresse email professionnelle de la personne"
+        },
+        {
+            "name": "telephone",
+            "type": "VARCHAR(20)",
+            "description": "Numéro de téléphone de la personne"
+        },
+        {
+            "name": "role",
+            "type": "VARCHAR(20)",
+            "description": "Rôle de la personne : 'admin', 'manager', 'analyst', 'finance admin', etc."
+        },
+        {
+            "name": "password",
+            "type": "VARCHAR(255)",
+            "description": "Mot de passe hashé. NEVER SELECT ce champ. Jamais exposé en réponse."
+        },
+        {
+            "name": "id_entite",
+            "type": "INTEGER",
+            "description": "Lien vers la table entite_juridique. Définit à quelle entité du groupe l'employé appartient.",
+            "references": {
+                "table": "entite_juridique",
+                "column": "id_entite"
+            },
+            "constraints": ["NOT NULL"]
+        }
+    ],
+    "synonyms": ["employé", "utilisateur", "personne", "collaborateur", "membre"],
+    "business_rules": [
+        "Un membre du personnel est rattaché à une seule entité juridique.",
+        "Un membre du personnel effectue plusieurs actions (loggées dans la table action).",
+        "Pour insérer un nouvel employé, récupérer l'id_entite via une sous-requête sur entite_juridique si l'id n'est pas fourni directement.",
+        "Si le mail n'est pas fourni, le générer au format 'prenom.nom@orionis.com' (en minuscules).",
+        "Le champ password ne doit JAMAIS apparaître dans une requête SELECT. Toujours exclure cette colonne."
+    ],
+    "common_mistakes": [
+        "CRITIQUE : Ne jamais faire SELECT * FROM personnel. Toujours lister explicitement les colonnes en excluant 'password'.",
+        "Ne pas confondre personnel (employé interne) et client (externe).",
+        "Pour affecter un employé à un pays, utiliser une sous-requête sur entite_juridique WHERE pays = '...' pour obtenir l'id_entite.",
+        "Le rôle est en minuscules : 'admin', 'manager', 'analyst' — ne pas capitaliser."
+    ],
+    "sample_queries": [
+        {
+            "question": "Insère un nouvel employé John Doe. Son email est john.doe@orionis.com et son rôle est manager.",
+            "sql": "INSERT INTO personnel (nom, prenom, email, telephone, role, password, id_entite) VALUES ('Doe', 'John', 'john.doe@orionis.com', NULL, 'manager', 'default_password', (SELECT id_entite FROM entite_juridique LIMIT 1));"
+        },
+        {
+            "question": "Il y a un nouvel employé, Jane Smith, qui vient de rejoindre la Chine. Elle est manager.",
+            "sql": "INSERT INTO personnel (nom, prenom, email, role, password, id_entite) VALUES ('Smith', 'Jane', 'jane.smith@orionis.com', 'manager', 'default_password', (SELECT id_entite FROM entite_juridique WHERE pays = 'Chine'));"
+        },
+        {
+            "question": "Qui sont les managers de l'entité n°1 ?",
+            "sql": "SELECT no_matricule, nom, prenom, email FROM personnel WHERE id_entite = 1 AND role = 'manager';"
+        },
+        {
+            "question": "Change le rôle de John Doe en 'admin'.",
+            "sql": "UPDATE personnel SET role = 'admin' WHERE nom = 'Doe' AND prenom = 'John';"
+        },
+        {
+            "question": "Affecte l'employé Jane Smith en Grèce.",
+            "sql": "UPDATE personnel SET id_entite = (SELECT id_entite FROM entite_juridique WHERE pays = 'Grèce') WHERE nom = 'Smith' AND prenom = 'Jane';"
+        },
+        {
+            "question": "Supprime l'accès de l'employé avec le matricule 12.",
+            "sql": "DELETE FROM personnel WHERE no_matricule = 12;"
+        },
+        {
+            "question": "Combien d'employés y a-t-il par entité juridique ?",
+            "sql": "SELECT e.nom AS entite, COUNT(p.no_matricule) AS nb_employes FROM entite_juridique e LEFT JOIN personnel p ON e.id_entite = p.id_entite GROUP BY e.id_entite, e.nom ORDER BY nb_employes DESC;"
+        },
+        {
+            "question": "Quelles actions a effectuées Jane Smith cette semaine ?",
+            "sql": "SELECT a.type, a.description, a.date_action, a.statut FROM action a JOIN personnel p ON a.no_matricule = p.no_matricule WHERE p.nom = 'Smith' AND p.prenom = 'Jane' AND a.date_action >= CURRENT_DATE - INTERVAL '7 days' ORDER BY a.date_action DESC;"
+        }
+    ]
+}

@@ -1,0 +1,52 @@
+{
+    "table_name": "entite_juridique",
+    "description": "Racine du groupe Orionis. Représente les sociétés ou filiales du groupe, chacune dans un pays donné. Toutes les autres entités (personnel, comptes, projets, bureaux) y sont rattachées.",
+    "columns": [
+        {
+            "name": "id_entite",
+            "type": "SERIAL",
+            "description": "Clé primaire unique de l'entité"
+        },
+        {
+            "name": "nom",
+            "type": "VARCHAR(100)",
+            "description": "Nom de la société ou filiale (ex: 'Orionis France SAS', 'Orionis CI')"
+        },
+        {
+            "name": "pays",
+            "type": "VARCHAR(50)",
+            "description": "Pays où est établie l'entité juridique (ex: 'France', 'Côte d'Ivoire', 'Maroc')"
+        }
+    ],
+    "synonyms": ["représentation", "société", "filiale", "structure", "base", "pays"],
+    "business_rules": [
+        "Une entité juridique peut avoir plusieurs bureaux, projets, membres du personnel et comptes bancaires.",
+        "C'est la racine hiérarchique du groupe : toute donnée remonte à une entité."
+    ],
+    "common_mistakes": [
+        "Quand l'utilisateur mentionne un pays (ex: 'en France', 'depuis la Chine'), utiliser entite_juridique WHERE pays = '...' pour obtenir l'id_entite.",
+        "Une entité peut avoir plusieurs entrées si le groupe a plusieurs sociétés dans le même pays — ne pas supposer unicité par pays."
+    ],
+    "sample_queries": [
+        {
+            "question": "Insère notre nouvelle filiale en France.",
+            "sql": "INSERT INTO entite_juridique (nom, pays) VALUES ('Orionis France SAS', 'France');"
+        },
+        {
+            "question": "Quelles sont nos entités basées en France ?",
+            "sql": "SELECT id_entite, nom FROM entite_juridique WHERE pays = 'France';"
+        },
+        {
+            "question": "Donne-moi le nombre total d'entités juridiques du groupe.",
+            "sql": "SELECT COUNT(*) AS nb_entites FROM entite_juridique;"
+        },
+        {
+            "question": "Liste toutes nos entités avec le nombre d'employés par entité.",
+            "sql": "SELECT e.nom, e.pays, COUNT(p.no_matricule) AS nb_employes FROM entite_juridique e LEFT JOIN personnel p ON e.id_entite = p.id_entite GROUP BY e.id_entite, e.nom, e.pays ORDER BY nb_employes DESC;"
+        },
+        {
+            "question": "Dans quels pays le groupe Orionis est-il présent ?",
+            "sql": "SELECT DISTINCT pays FROM entite_juridique ORDER BY pays;"
+        }
+    ]
+}

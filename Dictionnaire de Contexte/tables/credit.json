@@ -1,0 +1,88 @@
+{
+    "table_name": "credit",
+    "description": "Enregistre les encaissements bancaires : flux entrants sur les comptes Orionis suite au règlement d'une facture émise par un client.",
+    "columns": [
+        {
+            "name": "id_transaction",
+            "type": "SERIAL",
+            "description": "Clé primaire unique de la transaction"
+        },
+        {
+            "name": "montant",
+            "type": "DECIMAL(15,2)",
+            "description": "Montant encaissé. Doit correspondre au montant de la facture_emise associée."
+        },
+        {
+            "name": "reference",
+            "type": "VARCHAR(50)",
+            "description": "Référence du virement reçu (ex: numéro de virement SEPA client)"
+        },
+        {
+            "name": "date",
+            "type": "DATE",
+            "description": "Date de réception du paiement"
+        },
+        {
+            "name": "no_compte",
+            "type": "INTEGER",
+            "description": "Numéro de compte bancaire externe du client (informatif, pas une FK interne)"
+        },
+        {
+            "name": "no_compte_credit",
+            "type": "INTEGER",
+            "description": "Lien vers le compte bancaire Orionis qui reçoit les fonds.",
+            "references": {
+                "table": "compte_bancaire",
+                "column": "no_compte"
+            },
+            "constraints": ["NOT NULL"]
+        },
+        {
+            "name": "id_facture",
+            "type": "INTEGER",
+            "description": "Lien vers la facture émise réglée par ce crédit.",
+            "references": {
+                "table": "facture_emise",
+                "column": "id_facture"
+            },
+            "constraints": ["NOT NULL"]
+        }
+    ],
+    "synonyms": ["encaissement", "virement entrant", "règlement client", "paiement reçu", "recette", "transaction entrante"],
+    "flow_context": {
+        "description": "Un crédit confirme qu'un client a payé une facture émise. Flux : facture_emise → credit → solde compte_bancaire mis à jour.",
+        "note": "Le montant du crédit doit être identique au montant de la facture_emise associée."
+    },
+    "business_rules": [
+        "Le montant du crédit doit correspondre au montant de la facture émise associée.",
+        "L'insertion d'un crédit confirme le règlement effectif d'une facture client.",
+        "Le solde du compte récepteur est automatiquement incrémenté via trigger."
+    ],
+    "common_mistakes": [
+        "Ne pas confondre credit (encaissement client, lié à facture_emise) et transaction_interne (virement interne sans facture).",
+        "Ne pas mettre à jour le solde du compte manuellement — c'est géré par trigger.",
+        "Un crédit est toujours lié à une facture_emise, jamais à une facture_reçue."
+    ],
+    "sample_queries": [
+        {
+            "question": "Vérifie si la facture émise n°202 a été payée.",
+            "sql": "SELECT CASE WHEN EXISTS (SELECT 1 FROM credit WHERE id_facture = 202) THEN 'Payée' ELSE 'En attente' END AS statut_paiement;"
+        },
+        {
+            "question": "Quel est le montant total des virements clients reçus aujourd'hui ?",
+            "sql": "SELECT SUM(montant) AS total_encaisse FROM credit WHERE date = CURRENT_DATE;"
+        },
+        {
+            "question": "Enregistre le paiement de la facture n°50 (1500€) reçu sur le compte n°3.",
+            "sql": "INSERT INTO credit (montant, date, no_compte_credit, id_facture, reference) VALUES (1500, CURRENT_DATE, 3, 50, 'Virement client');"
+        },
+        {
+            "question": "Quelles factures émises n'ont pas encore été réglées ?",
+            "sql": "SELECT f.id_facture, f.montant, f.date, c.nom AS client FROM facture_emise f JOIN client c ON f.id_client = c.id_client WHERE NOT EXISTS (SELECT 1 FROM credit cr WHERE cr.id_facture = f.id_facture) ORDER BY f.date;"
+        },
+        {
+            "question": "Quel est le total encaissé par mois en 2025 ?",
+            "sql": "SELECT date_trunc('month', date) AS mois, SUM(montant) AS total_encaisse FROM credit WHERE EXTRACT(YEAR FROM date) = 2025 GROUP BY mois ORDER BY mois;"
+        }
+    ]
+}

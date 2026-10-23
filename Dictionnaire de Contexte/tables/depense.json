@@ -1,0 +1,94 @@
+{
+    "table_name": "depense",
+    "description": "Enregistre toutes les sorties d'argent opérationnelles du groupe Orionis, liées à un projet ou à un bureau. C'est la table centrale du flux de dépense.",
+    "columns": [
+        {
+            "name": "id_depense",
+            "type": "SERIAL",
+            "description": "Clé primaire unique de la dépense."
+        },
+        {
+            "name": "libelle",
+            "type": "VARCHAR(100)",
+            "description": "Nom ou libellé descriptif de la dépense (ex: 'Achat serveur', 'Expertise cloud')."
+        },
+        {
+            "name": "categorie",
+            "type": "VARCHAR(100)",
+            "description": "Catégorie de la dépense : 'projet' si liée à un projet, 'bureau' si liée à un bureau."
+        },
+        {
+            "name": "montant",
+            "type": "DECIMAL(15,2)",
+            "description": "Montant de la dépense. Doit être identique au montant dans facture_reçue et debit associés."
+        },
+        {
+            "name": "devise",
+            "type": "VARCHAR(3)",
+            "description": "Devise de la dépense (ex: 'EUR', 'USD', 'XOF')."
+        },
+        {
+            "name": "date",
+            "type": "DATE",
+            "description": "Date de l'opération."
+        },
+        {
+            "name": "id_bureau",
+            "type": "INTEGER",
+            "description": "Lien vers la table bureau. Renseigné si la dépense est de catégorie 'bureau'.",
+            "references": {
+                "table": "bureau",
+                "column": "id_bureau"
+            }
+        }
+    ],
+    "synonyms": ["achat", "paiement", "frais", "charge", "sortie d'argent", "décaissement"],
+    "flow_context": {
+        "description": "Une dépense projet suit toujours ce flux complet en une transaction atomique :",
+        "steps": [
+            "1. INSERT INTO depense → obtenir id_depense",
+            "2. INSERT INTO facture_reçue (avec id_depense) → obtenir id_facture",
+            "3. INSERT INTO depense_projet (avec id_depense + id_projet + pourcentage)",
+            "4. INSERT INTO debit (avec id_facture + no_compte_debit + montant)"
+        ],
+        "note": "La relation entre depense et facture_reçue est portée par facture_reçue.id_depense. Ne jamais insérer une dépense sans créer sa facture_reçue juste après. Les montants dans depense, facture_reçue et debit doivent être identiques."
+    },
+    "business_rules": [
+        "Une dépense ne peut pas être insérée si elle dépasse le budget restant du projet.",
+        "Toute insertion nécessite une confirmation utilisateur via WhatsApp.",
+        "Une dépense entraîne obligatoirement une unique facture reçue.",
+        "Le montant doit être identique dans depense, facture_reçue et debit.",
+        "Si categorie = 'projet', une entrée dans depense_projet est obligatoire.",
+        "Si categorie = 'bureau', le champ id_bureau doit être renseigné.",
+        "Pour retrouver la facture d'une dépense : SELECT * FROM facture_reçue WHERE id_depense = <id_depense>."
+    ],
+    "common_mistakes": [
+        "Ne jamais insérer dans depense seul : toujours créer la facture_reçue dans la même transaction CTE.",
+        "Ne pas oublier le INSERT INTO debit pour déclencher le paiement effectif.",
+        "Le budget restant d'un projet = projet.budget - SUM(depense.montant * depense_projet.pourcentage/100). Toujours vérifier avant insertion.",
+        "Pour une dépense multi-projets, la somme des pourcentages dans depense_projet DOIT être égale à 100.",
+        "Pour joindre depense et facture_reçue, utiliser : JOIN facture_reçue fr ON fr.id_depense = d.id_depense (et non pas d.id_facture qui n'existe plus)."
+    ],
+    "sample_queries": [
+        {
+            "question": "Nouvelle dépense de 500€ 'Expertise' sur le projet 'Alpha', payée depuis le compte n°3.",
+            "sql": "WITH ins_depense AS (INSERT INTO depense (libelle, montant, devise, date, categorie) VALUES ('Expertise', 500, 'EUR', CURRENT_DATE, 'projet') RETURNING id_depense), ins_facture AS (INSERT INTO facture_reçue (montant, date, id_depense) SELECT 500, CURRENT_DATE, id_depense FROM ins_depense RETURNING id_facture), ins_dp AS (INSERT INTO depense_projet (id_depense, id_projet, pourcentage) SELECT id_depense, (SELECT id_projet FROM projet WHERE nom = 'Alpha'), 100 FROM ins_depense) INSERT INTO debit (montant, date, no_compte_debit, id_facture, reference) SELECT 500, CURRENT_DATE, 3, id_facture, 'Dépense Expertise Alpha' FROM ins_facture;"
+        },
+        {
+            "question": "Combien a-t-on dépensé sur le projet 'Alpha' ce mois-ci ?",
+            "sql": "SELECT SUM(d.montant * (dp.pourcentage / 100.0)) AS total_depense FROM depense d JOIN depense_projet dp ON d.id_depense = dp.id_depense JOIN projet p ON dp.id_projet = p.id_projet WHERE p.nom = 'Alpha' AND d.date >= date_trunc('month', CURRENT_DATE);"
+        },
+        {
+            "question": "Quel est le budget restant du projet 'Alpha' ?",
+            "sql": "SELECT p.budget - COALESCE(SUM(d.montant * (dp.pourcentage / 100.0)), 0) AS budget_restant FROM projet p LEFT JOIN depense_projet dp ON p.id_projet = dp.id_projet LEFT JOIN depense d ON dp.id_depense = d.id_depense WHERE p.nom = 'Alpha' GROUP BY p.budget;"
+        },
+        {
+            "question": "Trouve la facture liée à la dépense 'Expertise'.",
+            "sql": "SELECT fr.* FROM facture_reçue fr JOIN depense d ON fr.id_depense = d.id_depense WHERE d.libelle ILIKE '%Expertise%';"
+        },
+        {
+            "question": "Liste les 5 dépenses les plus élevées tous projets confondus.",
+            "sql": "SELECT d.libelle, d.montant, d.devise, d.date, p.nom AS projet FROM depense d JOIN depense_projet dp ON d.id_depense = dp.id_depense JOIN projet p ON dp.id_projet = p.id_projet ORDER BY d.montant DESC LIMIT 5;"
+        }
+    ]
+}

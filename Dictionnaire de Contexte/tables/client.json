@@ -1,0 +1,69 @@
+{
+    "table_name": "client",
+    "description": "Contient les informations liées aux clients externes du groupe Orionis. Un client commande des projets et règle des factures émises.",
+    "columns": [
+        {
+            "name": "id_client",
+            "type": "SERIAL",
+            "description": "Clé primaire unique du client"
+        },
+        {
+            "name": "nom",
+            "type": "VARCHAR(100)",
+            "description": "Nom (de famille ou raison sociale) du client"
+        },
+        {
+            "name": "prenom",
+            "type": "VARCHAR(100)",
+            "description": "Prénom du client (NULL si personne morale)"
+        },
+        {
+            "name": "adresse",
+            "type": "VARCHAR(255)",
+            "description": "Adresse postale du client"
+        },
+        {
+            "name": "email",
+            "type": "VARCHAR(100)",
+            "description": "Adresse email de contact du client"
+        }
+    ],
+    "synonyms": ["partenaire", "donneur d'ordre", "commanditaire", "acheteur", "contractant"],
+    "business_rules": [
+        "Un client peut commander plusieurs projets.",
+        "Un client peut régler plusieurs factures émises.",
+        "Le nom est obligatoire. Le prénom est optionnel (clients personnes morales).",
+        "L'email doit être unique par client."
+    ],
+    "common_mistakes": [
+        "Ne jamais faire SELECT * FROM client sans filtre dans un contexte analytique : toujours préciser les colonnes utiles.",
+        "Pour retrouver un client par nom partiel, utiliser ILIKE '%nom%' et non = 'nom' (casse et espaces variables).",
+        "Ne pas confondre client (externe) et personnel (interne au groupe Orionis)."
+    ],
+    "sample_queries": [
+        {
+            "question": "Crée un nouveau client. Il s'appelle HINKS Xavier et il vit à Berlin.",
+            "sql": "INSERT INTO client (nom, prenom, adresse, email) VALUES ('HINKS', 'Xavier', 'Berlin, Allemagne', 'xavier.hinks@email.com');"
+        },
+        {
+            "question": "Mets à jour l'adresse email de Xavier HINKS : x.hinks@email.com.",
+            "sql": "UPDATE client SET email = 'x.hinks@email.com' WHERE nom = 'HINKS' AND prenom = 'Xavier';"
+        },
+        {
+            "question": "Supprime le client n°15 (doublon).",
+            "sql": "DELETE FROM client WHERE id_client = 15;"
+        },
+        {
+            "question": "Affiche les clients dont le nom commence par 'H'.",
+            "sql": "SELECT id_client, nom, prenom, email FROM client WHERE nom ILIKE 'H%';"
+        },
+        {
+            "question": "Quel est le chiffre d'affaires total généré par le client TechCorp ?",
+            "sql": "SELECT c.nom, c.prenom, SUM(f.montant) AS total_facture FROM client c JOIN facture_emise f ON c.id_client = f.id_client WHERE c.nom ILIKE '%TechCorp%' GROUP BY c.id_client, c.nom, c.prenom;"
+        },
+        {
+            "question": "Liste les clients qui ont au moins un projet en cours.",
+            "sql": "SELECT DISTINCT c.nom, c.prenom FROM client c JOIN projet p ON c.id_client = p.id_client WHERE p.date_fin >= CURRENT_DATE OR p.date_fin IS NULL;"
+        }
+    ]
+}

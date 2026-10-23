@@ -1,0 +1,70 @@
+{
+    "table_name": "action",
+    "description": "Journal d'audit centralisé. Enregistre toutes les opérations effectuées par les membres du personnel via le chatbot (INSERT, UPDATE, DELETE, SELECT analytique).",
+    "columns": [
+        {
+            "name": "id_action",
+            "type": "SERIAL",
+            "description": "Clé primaire unique de l'action."
+        },
+        {
+            "name": "type",
+            "type": "VARCHAR(50)",
+            "description": "Type de l'action : 'INSERT', 'UPDATE', 'DELETE', 'SELECT'."
+        },
+        {
+            "name": "description",
+            "type": "TEXT",
+            "description": "Description lisible de l'action effectuée (ex: 'Ajout dépense Expertise 500€ projet Alpha')."
+        },
+        {
+            "name": "date_action",
+            "type": "TIMESTAMP",
+            "description": "Horodatage précis de l'action (date + heure)."
+        },
+        {
+            "name": "statut",
+            "type": "VARCHAR(20)",
+            "description": "Résultat de l'action : 'SUCCES' ou 'ECHEC'."
+        },
+        {
+            "name": "no_matricule",
+            "type": "INTEGER",
+            "description": "Lien vers personnel. Identifie l'employé ayant effectué l'action.",
+            "references": {
+                "table": "personnel",
+                "column": "no_matricule"
+            },
+            "constraints": ["NOT NULL"]
+        }
+    ],
+    "synonyms": ["log", "audit", "historique", "trace", "journal", "activité", "requêtes"],
+    "business_rules": [
+        "Toute opération effectuée par un membre du personnel doit être enregistrée dans cette table.",
+        "Les insertions dans action sont gérées automatiquement via trigger sur les tables métier.",
+        "Le statut est 'SUCCES' si l'opération s'est exécutée, 'ECHEC' si elle a été rejetée (ex: budget dépassé)."
+    ],
+    "common_mistakes": [
+        "Ne pas insérer manuellement dans action : c'est automatisé via trigger.",
+        "Pour auditer un employé, toujours joindre avec personnel pour récupérer nom/prénom.",
+        "date_action est un TIMESTAMP (pas DATE) — utiliser date_action::date pour comparer à une date."
+    ],
+    "sample_queries": [
+        {
+            "question": "Quelles sont les 5 dernières actions effectuées par John Doe ?",
+            "sql": "SELECT a.type, a.description, a.date_action, a.statut FROM action a JOIN personnel p ON a.no_matricule = p.no_matricule WHERE p.nom = 'Doe' AND p.prenom = 'John' ORDER BY a.date_action DESC LIMIT 5;"
+        },
+        {
+            "question": "Y a-t-il eu des erreurs (statut 'ECHEC') aujourd'hui ?",
+            "sql": "SELECT a.type, a.description, a.date_action, p.nom, p.prenom FROM action a JOIN personnel p ON a.no_matricule = p.no_matricule WHERE a.statut = 'ECHEC' AND a.date_action::date = CURRENT_DATE;"
+        },
+        {
+            "question": "Combien d'actions par type ont été effectuées cette semaine ?",
+            "sql": "SELECT type, COUNT(*) AS nb FROM action WHERE date_action >= CURRENT_DATE - INTERVAL '7 days' GROUP BY type ORDER BY nb DESC;"
+        },
+        {
+            "question": "Qui est l'employé le plus actif ce mois-ci ?",
+            "sql": "SELECT p.nom, p.prenom, COUNT(*) AS nb_actions FROM action a JOIN personnel p ON a.no_matricule = p.no_matricule WHERE a.date_action >= date_trunc('month', CURRENT_DATE) GROUP BY p.no_matricule, p.nom, p.prenom ORDER BY nb_actions DESC LIMIT 1;"
+        }
+    ]
+}

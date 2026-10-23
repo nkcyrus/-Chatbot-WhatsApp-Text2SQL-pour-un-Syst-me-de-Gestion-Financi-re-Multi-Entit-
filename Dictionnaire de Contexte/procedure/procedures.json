@@ -1,0 +1,502 @@
+[
+  {
+    "name": "get_budget_restant",
+    "type": "FUNCTION",
+    "returns": "DECIMAL(15,2)",
+    "description": "Retourne le budget restant d'un projet (budget alloué moins la somme des dépenses imputées, pondérées par leur pourcentage).",
+    "parameters": [
+      {
+        "name": "p_id_projet",
+        "type": "INTEGER",
+        "description": "Identifiant du projet (id_projet)"
+      }
+    ],
+    "business_rules": [
+      "Lève une exception si le projet est introuvable.",
+      "Retourne budget - SUM(depense.montant * pourcentage / 100) pour toutes les dépenses liées au projet."
+    ],
+    "common_mistakes": [
+      "Toujours appeler cette fonction AVANT d'insérer une dépense pour vérifier la faisabilité.",
+      "Ne pas confondre budget alloué (projet.budget) et budget restant (résultat de cette fonction)."
+    ],
+    "sample_queries": [
+      {
+        "question": "Quel est le budget restant du projet 'Alpha' ?",
+        "sql": "SELECT get_budget_restant((SELECT id_projet FROM projet WHERE nom = 'Alpha')) AS budget_restant;"
+      },
+      {
+        "question": "Quel est le budget restant du projet n°3 ?",
+        "sql": "SELECT get_budget_restant(3) AS budget_restant;"
+      },
+      {
+        "question": "Affiche le budget restant de tous les projets.",
+        "sql": "SELECT nom, budget, get_budget_restant(id_projet) AS budget_restant FROM projet ORDER BY budget_restant ASC;"
+      }
+    ],
+    "category": "utilitaire"
+  },
+  {
+    "name": "get_solde_disponible",
+    "type": "FUNCTION",
+    "returns": "DECIMAL(15,2)",
+    "description": "Retourne le solde actuel d'un compte bancaire interne.",
+    "parameters": [
+      {
+        "name": "p_no_compte",
+        "type": "INTEGER",
+        "description": "Numéro du compte bancaire (no_compte)"
+      }
+    ],
+    "business_rules": [
+      "Lève une exception si le compte est introuvable.",
+      "Utilisée comme garde-fou avant tout débit ou transfert sortant."
+    ],
+    "common_mistakes": [
+      "Appeler cette fonction avant tout INSERT dans debit ou transaction_interne pour vérifier la solvabilité.",
+      "Le solde retourné est en temps réel — ne pas cacher la valeur entre deux opérations."
+    ],
+    "sample_queries": [
+      {
+        "question": "Quel est le solde disponible du compte n°5 ?",
+        "sql": "SELECT get_solde_disponible(5) AS solde_disponible;"
+      },
+      {
+        "question": "Le compte n°3 peut-il supporter un débit de 2000€ ?",
+        "sql": "SELECT CASE WHEN get_solde_disponible(3) >= 2000 THEN 'Oui' ELSE 'Non' END AS faisable;"
+      }
+    ],
+    "category": "utilitaire"
+  },
+  {
+    "name": "is_facture_payee",
+    "type": "FUNCTION",
+    "returns": "BOOLEAN",
+    "description": "Vérifie si une facture (émise ou reçue) a déjà été réglée. Retourne TRUE si payée, FALSE sinon.",
+    "parameters": [
+      {
+        "name": "p_id_facture",
+        "type": "INTEGER",
+        "description": "Identifiant de la facture"
+      },
+      {
+        "name": "p_type",
+        "type": "VARCHAR(10)",
+        "description": "Type de facture : 'emise' (cherche dans credit) ou 'recue' (cherche dans debit)"
+      }
+    ],
+    "business_rules": [
+      "Pour une facture émise, vérifie l'existence d'un enregistrement dans credit.",
+      "Pour une facture reçue, vérifie l'existence d'un enregistrement dans debit.",
+      "Lève une exception si le type est autre que 'emise' ou 'recue'."
+    ],
+    "common_mistakes": [
+      "Ne pas oublier de préciser le type : 'emise' ou 'recue'.",
+      "Une facture émise non payée = aucun enregistrement dans credit. Une facture reçue non payée = aucun enregistrement dans debit."
+    ],
+    "sample_queries": [
+      {
+        "question": "La facture émise n°50 a-t-elle été payée ?",
+        "sql": "SELECT is_facture_payee(50, 'emise') AS est_payee;"
+      },
+      {
+        "question": "La facture reçue n°101 a-t-elle été réglée ?",
+        "sql": "SELECT is_facture_payee(101, 'recue') AS est_regle;"
+      },
+      {
+        "question": "Quelles factures émises cette année ne sont pas encore payées ?",
+        "sql": "SELECT id_facture, montant, date FROM facture_emise WHERE EXTRACT(YEAR FROM date) = EXTRACT(YEAR FROM CURRENT_DATE) AND is_facture_payee(id_facture, 'emise') = FALSE ORDER BY date;"
+      }
+    ],
+    "category": "utilitaire"
+  },
+  {
+    "name": "inserer_depense_complete",
+    "type": "PROCEDURE",
+    "description": "Insère une dépense projet de façon atomique : facture_reçue + depense + depense_projet (ventilation) + debit + mise à jour solde. C'est la procédure principale pour toute nouvelle dépense liée à un ou plusieurs projets.",
+    "parameters": [
+      {
+        "name": "p_libelle",
+        "type": "VARCHAR(100)",
+        "description": "Libellé de la dépense (ex: 'Expertise cloud', 'Achat serveur')"
+      },
+      {
+        "name": "p_montant",
+        "type": "DECIMAL(15,2)",
+        "description": "Montant total de la dépense"
+      },
+      {
+        "name": "p_devise",
+        "type": "VARCHAR(3)",
+        "description": "Devise (ex: 'EUR', 'USD', 'XOF')"
+      },
+      {
+        "name": "p_date",
+        "type": "DATE",
+        "description": "Date de la dépense"
+      },
+      {
+        "name": "p_no_compte",
+        "type": "INTEGER",
+        "description": "Numéro du compte bancaire qui finance la dépense"
+      },
+      {
+        "name": "p_ventilation",
+        "type": "ventilation_projet[]",
+        "description": "Tableau de paires (id_projet, pourcentage). La somme des pourcentages doit être égale à 100."
+      }
+    ],
+    "validations": [
+      "Vérifie que la somme des pourcentages = 100.",
+      "Vérifie que le solde du compte >= montant.",
+      "Vérifie que le budget restant de chaque projet >= montant imputé (montant * pourcentage / 100).",
+      "Lève une exception explicite en cas d'échec de l'une des validations."
+    ],
+    "common_mistakes": [
+      "Toujours utiliser cette procédure plutôt qu'un INSERT manuel pour garantir l'atomicité.",
+      "La ventilation doit couvrir 100% même si la dépense ne concerne qu'un seul projet.",
+      "La procédure gère elle-même la mise à jour du solde — ne pas faire d'UPDATE compte_bancaire séparé."
+    ],
+    "sample_queries": [
+      {
+        "question": "Insère une dépense de 500€ 'Expertise' sur le projet Alpha (100%), payée depuis le compte n°3.",
+        "sql": "CALL inserer_depense_complete('Expertise', 500, 'EUR', CURRENT_DATE, 3, ARRAY[ROW((SELECT id_projet FROM projet WHERE nom = 'Alpha'), 100)::ventilation_projet]);"
+      },
+      {
+        "question": "Insère une dépense de 1000€ 'Serveur cloud' : 60% sur Alpha, 40% sur Beta, depuis le compte n°5.",
+        "sql": "CALL inserer_depense_complete('Serveur cloud', 1000, 'EUR', CURRENT_DATE, 5, ARRAY[ROW((SELECT id_projet FROM projet WHERE nom = 'Alpha'), 60)::ventilation_projet, ROW((SELECT id_projet FROM projet WHERE nom = 'Beta'), 40)::ventilation_projet]);"
+      }
+    ],
+    "category": "metier"
+  },
+  {
+    "name": "inserer_credit_complet",
+    "type": "PROCEDURE",
+    "description": "Enregistre un encaissement client : vérifie que la facture émise existe et n'est pas déjà réglée, insère le crédit et met à jour le solde du compte récepteur.",
+    "parameters": [
+      {
+        "name": "p_id_facture",
+        "type": "INTEGER",
+        "description": "Identifiant de la facture émise à régler"
+      },
+      {
+        "name": "p_no_compte",
+        "type": "INTEGER",
+        "description": "Numéro du compte bancaire qui reçoit les fonds"
+      },
+      {
+        "name": "p_reference",
+        "type": "VARCHAR(50)",
+        "description": "Référence du virement client (ex: 'Virement SEPA client TechCorp')"
+      },
+      {
+        "name": "p_date",
+        "type": "DATE",
+        "description": "Date de réception du paiement"
+      }
+    ],
+    "validations": [
+      "Vérifie que la facture émise existe.",
+      "Vérifie que la facture n'est pas déjà réglée (pas de doublon dans credit).",
+      "Vérifie que le compte récepteur existe."
+    ],
+    "common_mistakes": [
+      "Le montant n'est pas un paramètre : il est automatiquement récupéré depuis facture_emise.",
+      "Utiliser uniquement pour les factures ÉMISES (revenus clients), pas les factures reçues."
+    ],
+    "sample_queries": [
+      {
+        "question": "Enregistre le paiement de la facture émise n°50 reçu sur le compte n°3.",
+        "sql": "CALL inserer_credit_complet(50, 3, 'Virement client', CURRENT_DATE);"
+      },
+      {
+        "question": "Le client TechCorp a réglé sa facture n°72, virement reçu sur le compte n°1.",
+        "sql": "CALL inserer_credit_complet(72, 1, 'Virement TechCorp', CURRENT_DATE);"
+      }
+    ],
+    "category": "metier"
+  },
+  {
+    "name": "transfert_interne",
+    "type": "PROCEDURE",
+    "description": "Effectue un virement entre deux comptes bancaires internes du groupe Orionis. Vérifie la disponibilité des fonds et met à jour les deux soldes de façon atomique.",
+    "parameters": [
+      {
+        "name": "p_no_compte_exp",
+        "type": "INTEGER",
+        "description": "Compte expéditeur (débité)"
+      },
+      {
+        "name": "p_no_compte_rec",
+        "type": "INTEGER",
+        "description": "Compte récepteur (crédité)"
+      },
+      {
+        "name": "p_montant",
+        "type": "DECIMAL(15,2)",
+        "description": "Montant à transférer (doit être > 0)"
+      },
+      {
+        "name": "p_reference",
+        "type": "VARCHAR(50)",
+        "description": "Référence libre du transfert (ex: 'Rééquilibrage trésorerie Q1')"
+      },
+      {
+        "name": "p_date",
+        "type": "DATE",
+        "description": "Date du transfert"
+      }
+    ],
+    "validations": [
+      "Vérifie que les deux comptes sont différents.",
+      "Vérifie que le montant est strictement supérieur à 0.",
+      "Vérifie que le solde du compte expéditeur >= montant.",
+      "Vérifie que le compte récepteur existe."
+    ],
+    "common_mistakes": [
+      "Ne pas confondre avec debit/credit : transfert_interne est uniquement pour les mouvements entre comptes internes, sans facture.",
+      "Les soldes sont mis à jour automatiquement — ne pas faire d'UPDATE séparé."
+    ],
+    "sample_queries": [
+      {
+        "question": "Transfère 5000€ du compte n°2 vers le compte n°7 pour rééquilibrage.",
+        "sql": "CALL transfert_interne(2, 7, 5000, 'Rééquilibrage trésorerie', CURRENT_DATE);"
+      },
+      {
+        "question": "Transfère 1000€ du compte 5 vers le compte 8 avec la référence 'Trésorerie Mars'.",
+        "sql": "CALL transfert_interne(5, 8, 1000, 'Trésorerie Mars', CURRENT_DATE);"
+      }
+    ],
+    "category": "metier"
+  },
+  {
+    "name": "cloturer_projet",
+    "type": "PROCEDURE",
+    "description": "Marque un projet comme terminé en fixant sa date_fin à la date du jour. Vérifie que le projet existe et n'est pas déjà clôturé.",
+    "parameters": [
+      {
+        "name": "p_id_projet",
+        "type": "INTEGER",
+        "description": "Identifiant du projet à clôturer"
+      }
+    ],
+    "validations": [
+      "Vérifie que le projet existe.",
+      "Vérifie que la date_fin n'est pas déjà définie dans le passé (projet déjà clôturé)."
+    ],
+    "common_mistakes": [
+      "La clôture est irréversible via cette procédure — toujours demander confirmation à l'utilisateur avant d'appeler.",
+      "Un projet clôturé a date_fin <= CURRENT_DATE. Un projet en cours a date_fin IS NULL ou date_fin > CURRENT_DATE."
+    ],
+    "sample_queries": [
+      {
+        "question": "Clôture le projet 'Alpha'.",
+        "sql": "CALL cloturer_projet((SELECT id_projet FROM projet WHERE nom = 'Alpha'));"
+      },
+      {
+        "question": "Clôture le projet n°7.",
+        "sql": "CALL cloturer_projet(7);"
+      }
+    ],
+    "category": "metier"
+  },
+  {
+    "name": "stats_depenses_mois",
+    "type": "PROCEDURE",
+    "category": "analytique",
+    "description": "Retourne le total des dépenses pour un mois et une année donnés, regroupé par entité juridique. Distingue les dépenses liées aux projets et celles liées aux bureaux. Si p_id_entite est NULL, retourne les données de toutes les entités.",
+    "parameters": [
+      {
+        "name": "p_mois",
+        "type": "INTEGER",
+        "description": "Numéro du mois (1-12)"
+      },
+      {
+        "name": "p_annee",
+        "type": "INTEGER",
+        "description": "Année (ex: 2026)"
+      },
+      {
+        "name": "p_id_entite",
+        "type": "INTEGER",
+        "description": "ID de l'entité juridique. NULL pour toutes les entités."
+      }
+    ],
+    "returns": "REFCURSOR avec colonnes : entite, pays, nb_depenses, total_depenses, devise, total_projets, total_bureaux",
+    "common_mistakes": [
+      "Pour le mois courant, utiliser EXTRACT(MONTH FROM CURRENT_DATE) et EXTRACT(YEAR FROM CURRENT_DATE).",
+      "Le paramètre p_id_entite est optionnel — ne pas le passer pour une vue globale multi-entités.",
+      "Les résultats sont groupés par devise — un compte EUR et un compte USD donnent deux lignes distinctes."
+    ],
+    "sample_queries": [
+      {
+        "question": "Quelles sont les dépenses du mois de mars 2026 pour l'entité n°1 ?",
+        "sql": "BEGIN; CALL stats_depenses_mois(3, 2026, 1); FETCH ALL FROM result; COMMIT;"
+      },
+      {
+        "question": "Quelles sont les dépenses de ce mois-ci pour toutes les entités ?",
+        "sql": "BEGIN; CALL stats_depenses_mois(EXTRACT(MONTH FROM CURRENT_DATE)::INTEGER, EXTRACT(YEAR FROM CURRENT_DATE)::INTEGER, NULL); FETCH ALL FROM result; COMMIT;"
+      }
+    ]
+  },
+  {
+    "name": "stats_depenses_projet",
+    "type": "PROCEDURE",
+    "category": "analytique",
+    "description": "Retourne le suivi budgétaire complet d'un projet : budget alloué, total dépensé, budget restant, pourcentage consommé et statut (En cours / Clôturé).",
+    "parameters": [
+      {
+        "name": "p_id_projet",
+        "type": "INTEGER",
+        "description": "Identifiant du projet"
+      }
+    ],
+    "returns": "REFCURSOR avec colonnes : projet, budget_alloue, total_depense, budget_restant, pct_consomme, date_debut, date_fin, statut",
+    "common_mistakes": [
+      "Pour appeler avec le nom du projet plutôt que l'ID : CALL stats_depenses_projet((SELECT id_projet FROM projet WHERE nom = 'Alpha'), 'result').",
+      "pct_consomme est NULL si le budget du projet est 0 — vérifier avant d'afficher."
+    ],
+    "sample_queries": [
+      {
+        "question": "Quel est le suivi budgétaire du projet 'Alpha' ?",
+        "sql": "BEGIN; CALL stats_depenses_projet((SELECT id_projet FROM projet WHERE nom = 'Alpha')); FETCH ALL FROM result; COMMIT;"
+      },
+      {
+        "question": "Combien reste-t-il dans le budget du projet n°3 ?",
+        "sql": "BEGIN; CALL stats_depenses_projet(3); FETCH ALL FROM result; COMMIT;"
+      }
+    ]
+  },
+  {
+    "name": "stats_depenses_bureau",
+    "type": "PROCEDURE",
+    "category": "analytique",
+    "description": "Retourne les dépenses d'un bureau pour une année donnée, avec détail par mois. Si p_mois est NULL, retourne toute l'année.",
+    "parameters": [
+      {
+        "name": "p_id_bureau",
+        "type": "INTEGER",
+        "description": "Identifiant du bureau"
+      },
+      {
+        "name": "p_annee",
+        "type": "INTEGER",
+        "description": "Année (ex: 2026)"
+      },
+      {
+        "name": "p_mois",
+        "type": "INTEGER",
+        "description": "Mois (1-12). NULL pour toute l'année."
+      }
+    ],
+    "returns": "REFCURSOR avec colonnes : bureau, entite, mois, annee, nb_depenses, total_depenses, devise, libelle_depense",
+    "common_mistakes": [
+      "Pour appeler avec le nom du bureau : CALL stats_depenses_bureau((SELECT id_bureau FROM bureau WHERE nom = 'Paris'), ...).",
+      "p_mois est optionnel — ne pas le passer ou passer NULL pour toute l'année."
+    ],
+    "sample_queries": [
+      {
+        "question": "Quelles sont les dépenses du bureau de Paris en 2026 ?",
+        "sql": "BEGIN; CALL stats_depenses_bureau((SELECT id_bureau FROM bureau WHERE nom = 'Paris'), 2026, NULL); FETCH ALL FROM result; COMMIT;"
+      },
+      {
+        "question": "Quelles sont les dépenses du bureau n°2 en janvier 2026 ?",
+        "sql": "BEGIN; CALL stats_depenses_bureau(2, 2026, 1); FETCH ALL FROM result; COMMIT;"
+      }
+    ]
+  },
+  {
+    "name": "stats_revenus_mois",
+    "type": "PROCEDURE",
+    "category": "analytique",
+    "description": "Retourne les revenus d'un mois donné : total facturé, total encaissé, total en attente et nombre de factures impayées. Optionnellement filtré par entité.",
+    "parameters": [
+      {
+        "name": "p_mois",
+        "type": "INTEGER",
+        "description": "Numéro du mois (1-12)"
+      },
+      {
+        "name": "p_annee",
+        "type": "INTEGER",
+        "description": "Année (ex: 2026)"
+      },
+      {
+        "name": "p_id_entite",
+        "type": "INTEGER",
+        "description": "ID de l'entité. NULL pour toutes."
+      }
+    ],
+    "returns": "REFCURSOR avec colonnes : mois, annee, nb_factures_emises, total_facture, total_encaisse, total_en_attente, nb_factures_impayees",
+    "common_mistakes": [
+      "total_encaisse peut être NULL si aucune facture n'a été réglée — utiliser COALESCE côté affichage.",
+      "Pour le mois courant, utiliser EXTRACT(MONTH FROM CURRENT_DATE) et EXTRACT(YEAR FROM CURRENT_DATE)."
+    ],
+    "sample_queries": [
+      {
+        "question": "Quels sont les revenus du mois d'avril 2026 pour l'entité n°1 ?",
+        "sql": "BEGIN; CALL stats_revenus_mois(4, 2026, 1); FETCH ALL FROM result; COMMIT;"
+      },
+      {
+        "question": "Quel est le total encaissé ce mois-ci toutes entités confondues ?",
+        "sql": "BEGIN; CALL stats_revenus_mois(EXTRACT(MONTH FROM CURRENT_DATE)::INTEGER, EXTRACT(YEAR FROM CURRENT_DATE)::INTEGER, NULL); FETCH ALL FROM result; COMMIT;"
+      }
+    ]
+  },
+  {
+    "name": "stats_revenus_client",
+    "type": "PROCEDURE",
+    "category": "analytique",
+    "description": "Retourne le chiffre d'affaires total d'un client : nombre de factures, CA total, CA encaissé, CA en attente, nombre de factures impayées et date de la dernière facture.",
+    "parameters": [
+      {
+        "name": "p_id_client",
+        "type": "INTEGER",
+        "description": "Identifiant du client"
+      }
+    ],
+    "returns": "REFCURSOR avec colonnes : client_nom, client_prenom, nb_factures_total, ca_total, ca_encaisse, ca_en_attente, nb_factures_impayees, derniere_facture",
+    "common_mistakes": [
+      "Pour appeler avec le nom du client : CALL stats_revenus_client((SELECT id_client FROM client WHERE nom = 'HINKS' AND prenom = 'Xavier'), 'result').",
+      "ca_en_attente NULL signifie que toutes les factures sont réglées."
+    ],
+    "sample_queries": [
+      {
+        "question": "Quel est le chiffre d'affaires total du client TechCorp ?",
+        "sql": "BEGIN; CALL stats_revenus_client((SELECT id_client FROM client WHERE nom ILIKE '%TechCorp%')); FETCH ALL FROM result; COMMIT;"
+      },
+      {
+        "question": "Combien de factures impayées a le client n°5 ?",
+        "sql": "BEGIN; CALL stats_revenus_client(5); FETCH ALL FROM result; COMMIT;"
+      }
+    ]
+  },
+  {
+    "name": "stats_tableau_de_bord",
+    "type": "PROCEDURE",
+    "category": "analytique",
+    "description": "Tableau de bord complet pour une entité juridique. Retourne 4 curseurs simultanés : trésorerie par compte, dépenses du mois en cours, revenus du mois en cours, et projets actifs avec alertes budget (🔴 dépassé, 🟠 >80%, 🟢 OK).",
+    "parameters": [
+      {
+        "name": "p_id_entite",
+        "type": "INTEGER",
+        "description": "Identifiant de l'entité juridique"
+      }
+    ],
+    "returns": "4 REFCURSOR : tresorerie (comptes + soldes), depenses (stats mois courant), revenus (stats mois courant), projets (budget + alertes)",
+    "common_mistakes": [
+      "Cette procédure retourne 4 curseurs — il faut faire FETCH ALL FROM tresorerie, puis FETCH ALL FROM depenses, etc.",
+      "Toujours appeler dans une transaction BEGIN/COMMIT pour que les curseurs restent ouverts.",
+      "Pour appeler avec le nom de l'entité : CALL stats_tableau_de_bord((SELECT id_entite FROM entite_juridique WHERE pays = 'France' LIMIT 1))."
+    ],
+    "sample_queries": [
+      {
+        "question": "Donne-moi le tableau de bord complet de l'entité n°1.",
+        "sql": "BEGIN; CALL stats_tableau_de_bord(1); FETCH ALL FROM tresorerie; FETCH ALL FROM depenses; FETCH ALL FROM revenus; FETCH ALL FROM projets; COMMIT;"
+      },
+      {
+        "question": "Quels projets de l'entité France ont une alerte budget ?",
+        "sql": "BEGIN; CALL stats_tableau_de_bord((SELECT id_entite FROM entite_juridique WHERE pays = 'France' LIMIT 1)); FETCH ALL FROM projets; COMMIT;"
+      }
+    ]
+  }
+]

@@ -1,0 +1,117 @@
+{
+    "table_name": "projet",
+    "description": "Contient les informations liées aux projets réalisés par le groupe Orionis pour ses clients. Un projet est la principale unité de suivi budgétaire et analytique.",
+    "columns": [
+        {
+            "name": "id_projet",
+            "type": "SERIAL",
+            "description": "Clé primaire unique du projet"
+        },
+        {
+            "name": "nom",
+            "type": "VARCHAR(100)",
+            "description": "Nom du projet"
+        },
+        {
+            "name": "description",
+            "type": "TEXT",
+            "description": "Description détaillée du projet"
+        },
+        {
+            "name": "budget",
+            "type": "DECIMAL(15,2)",
+            "description": "Budget total alloué au projet en euros. Ne doit pas être dépassé par la somme des dépenses associées."
+        },
+        {
+            "name": "date_debut",
+            "type": "DATE",
+            "description": "Date de début du projet"
+        },
+        {
+            "name": "date_fin",
+            "type": "DATE",
+            "description": "Date de fin prévue ou effective du projet. NULL si le projet est en cours sans échéance définie."
+        },
+        {
+            "name": "id_entite",
+            "type": "INTEGER",
+            "description": "Lien vers la table entite_juridique. Entité qui réalise le projet.",
+            "references": {
+                "table": "entite_juridique",
+                "column": "id_entite"
+            },
+            "constraints": [
+                "NOT NULL"
+            ]
+        },
+        {
+            "name": "id_client",
+            "type": "INTEGER",
+            "description": "Lien vers la table client. Client commanditaire du projet.",
+            "references": {
+                "table": "client",
+                "column": "id_client"
+            }
+        }
+    ],
+    "synonyms": [
+        "mission",
+        "tâche",
+        "affaire",
+        "chantier",
+        "contrat client",
+        "engagement"
+    ],
+    "business_rules": [
+        "Un projet est réalisé par une entité juridique.",
+        "Un projet peut impliquer plusieurs dépenses via la table depense_projet.",
+        "Un projet est commandé par un unique client.",
+        "Le budget restant = projet.budget - SUM(depense.montant * depense_projet.pourcentage / 100).",
+        "Une dépense ne peut pas être insérée si elle fait dépasser le budget total du projet."
+    ],
+    "common_mistakes": [
+        "Pour calculer les dépenses d'un projet, toujours passer par depense_projet et pondérer par le pourcentage : SUM(d.montant * dp.pourcentage / 100.0).",
+        "Ne pas confondre budget (alloué) et budget restant (alloué - dépensé).",
+        "Un projet sans date_fin n'est pas terminé — ne pas le filtrer comme clôturé.",
+        "Pour les requêtes analytiques multi-projets, utiliser LEFT JOIN depense_projet pour inclure les projets sans dépenses.",
+        "CRITIQUE : Ne jamais utiliser = 'nom' pour filtrer par nom. Toujours utiliser ILIKE '%nom%' car les utilisateurs donnent des noms partiels (ex: 'Alpha' pour 'Projet Alpha'). Ceci s'applique à toutes les colonnes nom/libelle."
+    ],
+    "sample_queries": [
+        {
+            "question": "Quel est le budget total du projet 'Alpha' ?",
+            "sql": "SELECT budget FROM projet WHERE nom ILIKE '%Alpha%';"
+        },
+        {
+            "question": "Combien a-t-on déjà dépensé sur le projet 'Alpha' ?",
+            "sql": "SELECT SUM(d.montant * (dp.pourcentage / 100.0)) AS total_depense FROM depense d JOIN depense_projet dp ON d.id_depense = dp.id_depense JOIN projet p ON dp.id_projet = p.id_projet WHERE p.nom ILIKE '%Alpha%';"
+        },
+        {
+            "question": "Quel est le budget restant du projet 'Alpha' ?",
+            "sql": "SELECT p.budget - COALESCE(SUM(d.montant * (dp.pourcentage / 100.0)), 0) AS budget_restant FROM projet p LEFT JOIN depense_projet dp ON p.id_projet = dp.id_projet LEFT JOIN depense d ON dp.id_depense = d.id_depense WHERE p.nom ILIKE '%Alpha%' GROUP BY p.budget;"
+        },
+        {
+            "question": "Donne-moi un tableau de bord budget de tous les projets : budget alloué, dépensé, restant.",
+            "sql": "SELECT p.nom, p.budget AS alloue, COALESCE(SUM(d.montant * dp.pourcentage / 100.0), 0) AS depense, p.budget - COALESCE(SUM(d.montant * dp.pourcentage / 100.0), 0) AS restant FROM projet p LEFT JOIN depense_projet dp ON p.id_projet = dp.id_projet LEFT JOIN depense d ON dp.id_depense = d.id_depense GROUP BY p.id_projet, p.nom, p.budget ORDER BY restant ASC;"
+        },
+        {
+            "question": "Quels projets ont dépassé 80% de leur budget ?",
+            "sql": "SELECT p.nom, p.budget, COALESCE(SUM(d.montant * dp.pourcentage / 100.0), 0) AS depense FROM projet p LEFT JOIN depense_projet dp ON p.id_projet = dp.id_projet LEFT JOIN depense d ON dp.id_depense = d.id_depense GROUP BY p.id_projet, p.nom, p.budget HAVING COALESCE(SUM(d.montant * dp.pourcentage / 100.0), 0) >= p.budget * 0.8;"
+        },
+        {
+            "question": "Change le budget du projet 'Alpha' à 15000€.",
+            "sql": "UPDATE projet SET budget = 15000 WHERE nom ILIKE '%Alpha%';"
+        },
+        {
+            "question": "Supprime le projet 'Test Temporaire'.",
+            "sql": "DELETE FROM projet WHERE nom ILIKE '%Test Temporaire%';"
+        },
+        {
+            "question": "Quel est le revenu total par projet en 2025 (factures émises) ?",
+            "sql": "SELECT p.nom AS projet, SUM(f.montant) AS revenu_total FROM projet p JOIN facture_emise f ON p.id_client = f.id_client WHERE EXTRACT(YEAR FROM f.date) = 2025 GROUP BY p.id_projet, p.nom ORDER BY revenu_total DESC;"
+        },
+        {
+            "question": "Liste les projets en cours (pas encore terminés).",
+            "sql": "SELECT nom, date_debut, date_fin, budget FROM projet WHERE date_fin IS NULL OR date_fin >= CURRENT_DATE ORDER BY date_debut;"
+        }
+    ]
+}

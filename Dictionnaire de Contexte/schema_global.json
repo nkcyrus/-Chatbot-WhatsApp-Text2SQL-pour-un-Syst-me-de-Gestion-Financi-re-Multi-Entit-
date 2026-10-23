@@ -1,0 +1,121 @@
+{
+  "project_name": "Orionis Finance DB",
+  "version": "1.0",
+  "database_type": "PostgreSQL",
+  "tables": [
+    {
+      "name": "entite_juridique",
+      "path": "./tables/entite_juridique.json",
+      "description": "Racine du groupe Orionis."
+    },
+    {
+      "name": "personnel",
+      "path": "./tables/personnel.json",
+      "description": "Utilisateurs et employés du groupe."
+    },
+    {
+      "name": "compte_bancaire",
+      "path": "./tables/compte_bancaire.json",
+      "description": "Sources et destinations des fonds."
+    },
+    {
+      "name": "projet",
+      "path": "./tables/projet.json",
+      "description": "Missions rattachées aux entités."
+    },
+    {
+      "name": "facture_reçue",
+      "path": "./tables/facture_recue.json",
+      "description": "Justificatifs des dépenses fournisseurs."
+    },
+    {
+      "name": "facture_emise",
+      "path": "./tables/facture_emise.json",
+      "description": "Justificatifs des revenus clients."
+    },
+    {
+      "name": "depense",
+      "path": "./tables/depense.json",
+      "description": "Opérations de sortie d'argent."
+    },
+    {
+      "name": "debit",
+      "path": "./tables/debit.json",
+      "description": "Flux bancaires sortants."
+    },
+    {
+      "name": "credit",
+      "path": "./tables/credit.json",
+      "description": "Flux bancaires entrants."
+    },
+    {
+      "name": "transaction_interne",
+      "path": "./tables/transaction_interne.json",
+      "description": "Virements entre comptes internes."
+    },
+    {
+      "name": "depense_projet",
+      "path": "./tables/depense_projet.json",
+      "description": "Table de liaison analytique."
+    },
+    { "name": "action", "path": "./tables/action.json", "desc": "Logs d'audit utilisateur" },
+    { "name": "bureau", "path": "./tables/bureau.json", "desc": "Sites physiques" },
+    { "name": "client", "path": "./tables/client.json", "desc": "Portefeuille clients externes" }
+  ],
+  "relationships": [
+    {
+      "description": "Lien hiérarchique de base",
+      "links": [
+        { "from": "bureau.id_entite", "to": "entite_juridique.id_entite", "type": "Many-to-One" },
+        { "from": "projet.id_entite", "to": "entite_juridique.id_entite", "type": "Many-to-One" },
+        { "from": "personnel.entite_id", "to": "entite_juridique.id_entite", "type": "Many-to-One" },
+        { "from": "compte_bancaire.id_entite", "to": "entite_juridique.id_entite", "type": "Many-to-One" }
+      ]
+    },
+    {
+      "description": "Lien Flux Financiers / Factures",
+      "links": [
+        { "from": "depense.id_facture", "to": "facture_reçue.id_facture", "type": "One-to-One" },
+        { "from": "debit.id_facture", "to": "facture_reçue.id_facture", "type": "Many-to-One" },
+        { "from": "credit.id_facture", "to": "facture_emise.id_facture", "type": "Many-to-One" },
+        { "from": "facture_emise.id_depense", "to": "depense.id_depense", "type": "Zero-to-One (Refacturation)" }
+      ]
+    },
+    {
+      "description": "Lien Flux Financiers / Comptes Bancaires",
+      "links": [
+        { "from": "debit.no_compte_debit", "to": "compte_bancaire.no_compte", "type": "Many-to-One" },
+        { "from": "credit.no_compte_credit", "to": "compte_bancaire.no_compte", "type": "Many-to-One" },
+        { "from": "transaction_interne.no_compte_expediteur", "to": "compte_bancaire.no_compte", "type": "Many-to-One" },
+        { "from": "transaction_interne.no_compte_recepteur", "to": "compte_bancaire.no_compte", "type": "Many-to-One" }
+      ]
+    },
+    {
+      "description": "Lien Analytique Projets",
+      "links": [
+        { "from": "depense_projet.id_depense", "to": "depense.id_depense", "type": "Many-to-One" },
+        { "from": "depense_projet.id_projet", "to": "projet.id_projet", "type": "Many-to-One" }
+      ]
+    },
+    {
+      "description": "Lien hiérarchique et Gouvernance",
+      "links": [
+        { "from": "personnel.id_entite", "to": "entite_juridique.id_entite", "type": "Many-to-One" },
+        { "from": "bureau.id_entite", "to": "entite_juridique.id_entite", "type": "Many-to-One" },
+        { "from": "projet.id_entite", "to": "entite_juridique.id_entite", "type": "Many-to-One" }
+      ]
+    },
+    {
+      "description": "Traçabilité des Actions (Audit Log)",
+      "links": [
+        { 
+          "from": "action.no_matricule", 
+          "to": "personnel.no_matricule", 
+          "type": "Many-to-One",
+          "comment": "Permet de savoir quel employé a effectué quelle opération (achat, virement, etc.)"
+        }
+      ]
+    }
+  ],
+  "procedures": "./procedure/procedures.json"
+}
